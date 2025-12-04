@@ -107,7 +107,6 @@ plot(ClustND2$Cluster, labels = dfND2$species_name, cex = 0.3)
 
 plot(ClustCytb$Cluster, labels = dfCytb$species_name, cex = 0.3)
 
-
 #5. Comparison using internal measures of cluster strength----
 
 #Seperating Cluster object and distance matrices
@@ -123,12 +122,12 @@ rm(ClustCytb, ClustND2)
 
 #Identifying optimal number of clusters(k) for Silhouette index
 #This will be done by iterating through values for k to find the highest average silhouette index
-#Iteration stops at 16 as √(n/2) can be used as good assumption to calculate max clusters
+#Iteration stops at 19 as √(n/2) can be used as good assumption to calculate max clusters
 #Writing function to determine optimal k
 
 Fn_Silhouette_K <- function(hc, dist) {
-  sil_values <- numeric(16)
-  for (k in 2:16) {
+  sil_values <- numeric(19)
+  for (k in 2:19) {
     clusters_k <- cutree(hc, k = k)
     sil_k <- silhouette(clusters_k, dist)
     sil_values[k] <- mean(sil_k[, 3])   # column 3 = silhouette width
