@@ -32,7 +32,7 @@ st_Cytb <- readDNAStringSet("../data/sequenceCytb.fasta")
 rm(gene1_search, gene2_search)
 names(st_ND2)
 #Since we will be working with 2 different datasets it would be more efficient to carry out some reproducible filtering and analysis steps by creating functions to carry them out.
-#Function for creating the dataframes and adding metadata
+#Function for creating the data frames and adding metadata
 fn_dataframe <- function(st) {
   df_new <-  data.frame(title = names(st),sequence = paste(st))
   df_new = df_new %>% 
@@ -45,35 +45,47 @@ dfND2 <- fn_dataframe(st_ND2)
 dfCytb <- fn_dataframe(st_Cytb)
 
 #2. Nucleotide Filtering steps----
-summary(str_count(dfND2$sequence))  #median= 893
-summary(str_count(dfCytb$sequence)) #median= 1026
+summary(str_count(dfND2$sequence))  #median= 1026
+summary(str_count(dfCytb$sequence)) #median= 893
+#No NAs present in the data 
+sum(is.na(dfND2$sequence))
+sum(is.na(dfCytb$sequence)) 
 
-#Setting missing data to 1% internal N's and length variability to 30% of our median value to keep good amount of our data and remove outliers
+#Setting missing data to 1% internal N's and length variability to  around 30% of the median values(1000) to both keep good amount of our data and remove outliers
 missing.data <- 0.01
 length.var <- 300
 
-#Filtering function removes N's at start and end, filters for over 1% internal N's and keeps length within a range of 300 from the median
+#Filtering function removes NAs from the data set, removes N's at start and end of each sequence, filters for over 1% internal N's and keeps length within a range of 300 from the median.
 fn_nuc_filter <- function(df) {
   df <- df %>%
-    filter(!is.na(sequence)) %>%
     mutate(nucleotides2 = str_remove_all(sequence, "^N+|N+$|-")) %>%
     filter(str_count(nucleotides2, "N") <= (missing.data * str_count(nucleotides2))) %>%
     filter(str_count(nucleotides2) >= median(str_count(nucleotides2)) - length.var &
     str_count(nucleotides2) <= median(str_count(nucleotides2)) + length.var)
   return(df)
 }
-
+#Now applying these fucntions
 dfND2 <- fn_nuc_filter(dfND2)
 dfCytb <- fn_nuc_filter(dfCytb)
 
-#Graphical exploration of filtered data
-hist(str_count(dfND2$sequence))
-hist(str_count(dfCytb$sequence)) #Aggregate around the median
+#Checks after filtering
+summary(str_count(dfND2$sequence))  #median= 1026
+summary(str_count(dfCytb$sequence)) #median= 748
+
+#Graphical exploration of filtered data show that most of the data aggregate around the median with a few slightly longer/shorter sequences
+hist(str_count(dfND2$nucleotides2), main = "Histogram of Nucleotide count for ND2", xlab= "Nucleotide count")
+hist(str_count(dfCytb$nucleotides2), main = "Histogram of Nucleotide count for Cytb", xlab= "Nucleotide count") 
+
+# #.Species filtering
+#This shows an imbalance of 345 species versus 115 species. I originally included filtering steps to reduce the number of ND2 species by about 180, removing the species with the lowest sample counts to balance both datasets. However, later analysis showed that doing this would reduce the quality of the ND2 dataset, because important information would be lost. That loss would skew the results in favour of the Cytb dataset.
+#I have still included the code in a seperate R file named "Species sampling" and can be run before section 3 to see the difference in results.
+length(unique(dfND2$species_name)) 
+length(unique(dfCytb$species_name))
 
 
 #3. Adding Kmer Frequencies (Dinucleotide and Trinucleotide)----
 
-#Creating function
+#Creating function to add Di nucleotide and trinucleotide frequencies to the data frames 
 Fn_Kmers <- function(df) {
   df <- as.data.frame(df)
   df$nucleotides2 <- DNAStringSet(df$nucleotides2)
@@ -87,7 +99,7 @@ dfCytb <- Fn_Kmers(dfCytb)
 
 
 #4. Clustering----
-# Creating function to create  distance matrix and clusters with kmer frequencies
+# Creating function to create  distance matrix and clusters with k-mer frequencies
 Fn_cluster <- function(df) {
   dist_mat= dist(df[,-(1:5)], method = "euclidean")
   Hier_cluster = hclust(dist_mat, method = "single")
@@ -100,12 +112,14 @@ Fn_cluster <- function(df) {
 ClustND2 <- Fn_cluster(dfND2)
 ClustCytb <- Fn_cluster(dfCytb)
 
-
 #Visualize clusters labelled with species names 
-#Both dendograms show good grouping according to species 
-plot(ClustND2$Cluster, labels = dfND2$species_name, cex = 0.3)
+#Both dendograms show good grouping according to species
+#Saved as Svgs for proper viewing
+plot(ClustND2$Cluster, labels = dfND2$species_name, cex = 0.3,main = "ND2 Cluster Dendogram", xlab = "Samples (Clustered by distance matrix)" )
+rect.hclust(ClustND2$Cluster, k = 2, border = "red")
 
-plot(ClustCytb$Cluster, labels = dfCytb$species_name, cex = 0.3)
+plot(ClustCytb$Cluster, labels = dfCytb$species_name, cex = 0.3,main = "Cytb Cluster Dendogram", xlab = "Samples (Clustered by distance matrix)")
+rect.hclust(ClustCytb$Cluster, k = 2, border = "red")
 
 #5. Comparison using internal measures of cluster strength----
 
@@ -122,10 +136,10 @@ rm(ClustCytb, ClustND2)
 
 #Identifying optimal number of clusters(k) for Silhouette index
 #This will be done by iterating through values for k to find the highest average silhouette index
-#Iteration stops at 19 as √(n/2) can be used as good assumption to calculate max clusters
+#Iteration stops at 19 as √(n/2) can be used as good assumption to calculate max clusters (n used here is the highest number of samples = 726)
 #Writing function to determine optimal k
 
-Fn_Silhouette_K <- function(hc, dist) {
+Fn_Silhouette_K <- function(hc, dist, gene) {
   sil_values <- numeric(19)
   for (k in 2:19) {
     clusters_k <- cutree(hc, k = k)
@@ -135,23 +149,39 @@ Fn_Silhouette_K <- function(hc, dist) {
   # Show silhouette widths
   print(sil_values)
   
+  plot(2:19, sil_values[2:19],
+       type = "b", pch = 19,
+       xlab = "Number of clusters (k)",
+       ylab = "Average silhouette width",
+       main = paste(gene, "Silhouette Scores for k = 2 to 19"))
+  
   # Identify best k
   best_k <- which.max(sil_values)
   cat("Optimal k based on silhouette width:", best_k, "\n")
 
-  #Plot best k Silhouette
+  # Calculate best k Silhouette
   clusters_best <- cutree(hc, k = best_k)
   sil_best <- silhouette(clusters_best, dist)
-  plot(sil_best, main = paste("Silhouette Plot for Optimal k =", best_k))
+  
   return(list(sil_best= sil_best, Cluster = clusters_best))
 }
 
-#Apply 
-#Cytb shows a much stronger clustering signal than ND2 due to its  high average silhouette width(0.81) . The samples form tighter, more internally consistent groups with clearer separation between them.
+#Apply function
+#Both plots show K is optimal at 2 clusters for CytB it remains strong at 3 clusters and drops sharply after for ND2 it drops after 2 clusters.
 
-#ND2, with its much lower silhouette values(0.15), shows weaker structure. This infers that Cytb might be better for cluster based classification. 
-Sil_ND2 <- Fn_Silhouette_K(hc_ND2, dist_ND2)
-Sil_Cytb <- Fn_Silhouette_K(hc_Cytb, dist_Cytb)
+Sil_ND2 <- Fn_Silhouette_K(hc_ND2, dist_ND2, "ND2")
+Sil_Cytb <- Fn_Silhouette_K(hc_Cytb, dist_Cytb, "Cytb")
+
+
+#Silhouette Plots for best k which is 2 
+#Thus is seperate from the function because of the 2 seperate plots(Previous to compare silhouette widths and this to generate silhouette plot for best K value)
+#Cytb shows a much stronger clustering signal than ND2 due to its  high average silhouette width(0.81) . The samples form tighter, more internally consistent groups with clearer separation between them.The plot also forms 2 strong clusters
+
+#ND2, with its  lower silhouette values(0.53), shows weaker structure and plot shows a very small second cluster. This infers that Cytb might be better for cluster based classification. 
+plot(Sil_ND2$sil_best, main = "ND2 Silhouette Plot for Optimal k = 2", col = rainbow(2), 
+     border = NA)
+plot(Sil_Cytb$sil_best, main = "Cytb Silhouette Plot for Optimal k = 2", col = rainbow(2), 
+     border = NA)
 
 
 #PCA on K-mer Frequencies to visualize 
@@ -173,6 +203,6 @@ plot_pca <- function(pca, clusters, title) {
     ggtitle(title)
 }
 #Plots
-plot_pca(pca_ND2, Sil_ND2$Cluster, "ND2 PCA")
-plot_pca(pca_Cytb, Sil_Cytb$Cluster, "CytB PCA")
+plot_pca(pca_ND2, Sil_ND2$Cluster, " PCA Plot for ND2")
+plot_pca(pca_Cytb, Sil_Cytb$Cluster, "PCA Plot for Cytb")
 
