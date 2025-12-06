@@ -1,10 +1,9 @@
-# BINF6210 Assignment 4: ----
+# BINF6210 Assignment 4: ----Difference in Clustering patterns of ND2 and Cytb genes for the Drosophilidae Taxonomic Family----
 # Author: Iroayo Toki
 # Published: December 5, 2025
 # Last updated: December 5, 2025
 # Model Taxa:Drosophilidae
 #Model Genes: ND2, Cytb
-#Difference in Clustering patterns of ND2 and Cytb genes for the Drosophilidae Taxonomic family 
 library(tidyverse)
 library(vegan)
 library(viridis)
@@ -12,7 +11,6 @@ library(ggplot2)
 library(rentrez)
 library(Biostrings)
 library(cluster)
-
 ##_. Entrez search----
 #Carrying out entrez search to find data sets within the needed paramaters, 2 genes of the same taxonomic group with over 1000 sequences and in similar range, I eventually decided to use ND2 and Cytb genes for the Drosophilidae family.
 gene1_search <- entrez_search(db = "nucleotide", 
@@ -50,7 +48,8 @@ summary(str_count(dfCytb$sequence)) #median= 893
 #No NAs present in the data 
 sum(is.na(dfND2$sequence))
 sum(is.na(dfCytb$sequence)) 
-
+sum(is.na(dfND2$species_name))
+sum(is.na(dfCytb$species_name))
 #Setting missing data to 1% internal N's and length variability to  around 30% of the median values(1000) to both keep good amount of our data and remove outliers
 missing.data <- 0.01
 length.var <- 300
@@ -76,7 +75,7 @@ summary(str_count(dfCytb$sequence)) #median= 748
 hist(str_count(dfND2$nucleotides2), main = "Histogram of Nucleotide count for ND2", xlab= "Nucleotide count")
 hist(str_count(dfCytb$nucleotides2), main = "Histogram of Nucleotide count for Cytb", xlab= "Nucleotide count") 
 
-# #.Species filtering
+##.Species filtering----
 #This shows an imbalance of 345 species versus 115 species. I originally included filtering steps to reduce the number of ND2 species by about 180, removing the species with the lowest sample counts to balance both datasets. However, later analysis showed that doing this would reduce the quality of the ND2 dataset, because important information would be lost. That loss would skew the results in favour of the Cytb dataset.
 #I have still included the code in a seperate R file named "Species sampling" and can be run before section 3 to see the difference in results.
 length(unique(dfND2$species_name)) 
@@ -116,10 +115,8 @@ ClustCytb <- Fn_cluster(dfCytb)
 #Both dendograms show good grouping according to species
 #Saved as Svgs for proper viewing
 plot(ClustND2$Cluster, labels = dfND2$species_name, cex = 0.3,main = "ND2 Cluster Dendogram", xlab = "Samples (Clustered by distance matrix)" )
-rect.hclust(ClustND2$Cluster, k = 2, border = "red")
 
 plot(ClustCytb$Cluster, labels = dfCytb$species_name, cex = 0.3,main = "Cytb Cluster Dendogram", xlab = "Samples (Clustered by distance matrix)")
-rect.hclust(ClustCytb$Cluster, k = 2, border = "red")
 
 #5. Comparison using internal measures of cluster strength----
 
@@ -133,6 +130,14 @@ dist_Cytb <- ClustCytb$Distance_matrix
 
 #removing Cluster list
 rm(ClustCytb, ClustND2)
+
+#Comparison of branch height statistics
+Bh_ND2 <- hc_ND2$height
+Bh_Cytb <- hc_Cytb$height
+
+#ND2 has a higher mean branch length 
+mean(Bh_ND2)
+mean(Bh_Cytb)
 
 #Identifying optimal number of clusters(k) for Silhouette index
 #This will be done by iterating through values for k to find the highest average silhouette index
@@ -172,6 +177,16 @@ Fn_Silhouette_K <- function(hc, dist, gene) {
 Sil_ND2 <- Fn_Silhouette_K(hc_ND2, dist_ND2, "ND2")
 Sil_Cytb <- Fn_Silhouette_K(hc_Cytb, dist_Cytb, "Cytb")
 
+#Apply K to dendograms
+#ND2 forms 1 large cluster and a smaller poorly structured cluster with almost no data while Cyt-b forms 2 well structured clusters (one cluster still smaller but better represented.)
+#This is also supported by our silhouette index scores (0.53 vs 0.81)
+plot(hc_ND2, labels = dfND2$species_name, cex = 0.3,main = "ND2 Cluster Dendogram", xlab = "Samples (Clustered by distance matrix)" )
+rect.hclust(hc_ND2, k = 2, border = "red")
+
+plot(hc_Cytb, labels = dfCytb$species_name, cex = 0.3,main = "Cytb Cluster Dendogram", xlab = "Samples (Clustered by distance matrix)")
+rect.hclust(hc_Cytb, k = 2, border = "red")
+
+
 
 #Silhouette Plots for best k which is 2 
 #Thus is seperate from the function because of the 2 seperate plots(Previous to compare silhouette widths and this to generate silhouette plot for best K value)
@@ -205,4 +220,8 @@ plot_pca <- function(pca, clusters, title) {
 #Plots
 plot_pca(pca_ND2, Sil_ND2$Cluster, " PCA Plot for ND2")
 plot_pca(pca_Cytb, Sil_Cytb$Cluster, "PCA Plot for Cytb")
+
+
+
+
 
